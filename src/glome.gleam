@@ -11,9 +11,11 @@ import gleam/map
 import gleam/dynamic
 import json
 
-const token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiIzYjcxMzU1NTg1ZDU0MDkwOTQ0NDY3OTU0ZDE1NTI5OCIsImlhdCI6MTYwNjY1NjU5OCwiZXhwIjoxOTIyMDE2NTk4fQ.mRiaQcq3KHS6bbl4hCXrm6deg6KObZSw1EilbXONsJ8"
+external fn get_env(String) -> Result(String, Nil) =
+  "system" "get_var"
 
 pub fn main() {
+  assert Ok(token) = get_env("ACCESS_TOKEN")
   assert Ok(_) =
     homeassistant.connect(
       Configuration("192.168.178.62", 8123, AccessToken(token)),
