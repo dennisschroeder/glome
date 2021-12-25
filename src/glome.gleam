@@ -1,8 +1,9 @@
 import gleam/io
 import homeassistant
 import homeassistant.{
-  AccessToken, Attributes, BinarySensor, Configuration, EntityId, InputBoolean, Light,
-  Off, On, Sensor, StateChangeEvent, StateChangeHandlers, register_handler,
+  AccessToken, Attributes, BinarySensor, Configuration, EntityId, HomeAssistant,
+  InputBoolean, Light, Off, On, Sensor, StateChangeEvent, StateChangeHandlers, add_constrained_handler,
+  add_handler,
 }
 import gleam/otp/process.{Receiver}
 import nerf/websocket.{Connection}
@@ -17,23 +18,21 @@ pub fn main() {
   assert Ok(_) =
     homeassistant.connect(
       Configuration("192.168.178.62", 8123, AccessToken(token)),
-      fn(handlers: StateChangeHandlers) {
-        handlers
-        |> register_handler(
+      fn(home_assistant: HomeAssistant) {
+        home_assistant
+        |> add_constrained_handler(
           for: EntityId(InputBoolean, "*"),
           handler: input_boolean_handler,
-          predicate: got_turned_on,
+          constraint: got_turned_on,
         )
       },
     )
 }
 
-fn input_boolean_handler(data: StateChangeEvent) {
+fn input_boolean_handler(data: StateChangeEvent, home_assistant: HomeAssistant) {
   io.println("")
   io.println("### Event handler ###")
   io.println("")
-  let Attributes(attributes) = data.old_state.attributes
-
   data
   |> io.debug
   io.println("")
@@ -41,6 +40,6 @@ fn input_boolean_handler(data: StateChangeEvent) {
   Ok(Nil)
 }
 
-fn got_turned_on(data: StateChangeEvent) {
+fn got_turned_on(data: StateChangeEvent, home_assistant: HomeAssistant) {
   data.old_state.value == Off && data.new_state.value == On
 }

@@ -14,6 +14,8 @@ import gleam/list
 import error.{
   AuthenticationError, DeserializationError, GlomeError, LoopNil, WebsocketConnectionError,
 }
+import gleam/httpc
+import gleam/http.{Post}
 
 // PUBLIC API
 pub type AccessToken {
@@ -131,11 +133,27 @@ pub type StateChangeEvent {
   StateChangeEvent(entity_id: EntityId, old_state: State, new_state: State)
 }
 
+type HaSystemDetails {
+  HaSystemDetails(
+    host: String,
+    port: Int,
+    access_token: AccessToken,
+    rest_api_path: String,
+  )
+}
+
+pub opaque type HomeAssistant {
+  HomeAssistant(
+    handlers: StateChangeHandlers,
+    ha_system_details: HaSystemDetails,
+  )
+}
+
 pub type StateChangeHandler =
-  fn(StateChangeEvent) -> Result(Nil, GlomeError)
+  fn(StateChangeEvent, HomeAssistant) -> Result(Nil, GlomeError)
 
 pub type StateChangeFilter =
-  fn(StateChangeEvent) -> Bool
+  fn(StateChangeEvent, HomeAssistant) -> Bool
 
 pub type StateChangeHandlersEntry {
   StateChangeHandlersEntry(
@@ -150,7 +168,7 @@ pub type StateChangeHandlers =
 
 pub fn connect(
   config: Configuration,
-  conn_handler: fn(StateChangeHandlers) -> StateChangeHandlers,
+  conn_handler: fn(HomeAssistant) -> HomeAssistant,
 ) -> Result(Nil, GlomeError) {
   let ha_api_path = "/api/websocket"
   let #(sender, receiver) = process.new_channel()
@@ -165,7 +183,18 @@ pub fn connect(
     start_state_loop(connection, sender)
   })
 
-  let handlers: StateChangeHandlers = conn_handler(list.new())
+  let home_assistant =
+    HomeAssistant(
+      handlers: list.new(),
+      ha_system_details: HaSystemDetails(
+        host: config.host,
+        port: config.port,
+        access_token: config.access_token,
+        rest_api_path: "/api",
+      ),
+    )
+
+  let handlers: StateChangeHandlers = conn_handler(home_assistant).handlers
 
   loops.start_state_change_event_receiver(fn() {
     let state_changed_event: StateChangeEvent =
@@ -176,11 +205,14 @@ pub fn connect(
       fn(entry: StateChangeHandlersEntry) {
         entry.entity_id.domain == state_changed_event.entity_id.domain && {
           entry.entity_id.object_id == state_changed_event.entity_id.object_id || entry.entity_id.object_id == "*"
-        } && entry.filter(state_changed_event)
+        }
       },
     )
+    |> list.filter(fn(entry: StateChangeHandlersEntry) {
+      entry.filter(state_changed_event, home_assistant)
+    })
     |> list.map(fn(entry: StateChangeHandlersEntry) {
-      entry.handler(state_changed_event)
+      entry.handler(state_changed_event, home_assistant)
     })
     |> list.map(fn(result: Result(Nil, GlomeError)) {
       case result {
@@ -197,16 +229,44 @@ pub fn connect(
   Ok(Nil)
 }
 
-pub fn register_handler(
-  in handlers: StateChangeHandlers,
+pub fn add_handler(
+  to home_assistant: HomeAssistant,
   for entity_id: EntityId,
   handler handler: StateChangeHandler,
-  predicate filter: StateChangeFilter,
-) -> StateChangeHandlers {
-  do_register_handler_with_filter(handlers, entity_id, handler, filter)
+) -> HomeAssistant {
+  let handlers =
+    do_add_handler_with_filter(
+      home_assistant.handlers,
+      entity_id,
+      handler,
+      fn(_, _) { True },
+    )
+  HomeAssistant(..home_assistant, handlers: handlers)
 }
 
-fn do_register_handler_with_filter(
+pub fn add_constrained_handler(
+  to home_assistant: HomeAssistant,
+  for entity_id: EntityId,
+  handler handler: StateChangeHandler,
+  constraint filter: StateChangeFilter,
+) -> HomeAssistant {
+  let handlers =
+    do_add_handler_with_filter(
+      home_assistant.handlers,
+      entity_id,
+      handler,
+      filter,
+    )
+  HomeAssistant(..home_assistant, handlers: handlers)
+}
+
+// pub fn call_service() -> Result(String, GlomeError) {
+//   let req =
+//     http.default_req()
+//     |> http.set_method(Post)
+// }
+// PRIVATE API
+fn do_add_handler_with_filter(
   in handlers: StateChangeHandlers,
   for entity_id: EntityId,
   handler handler: StateChangeHandler,
@@ -215,7 +275,6 @@ fn do_register_handler_with_filter(
   list.append(handlers, [StateChangeHandlersEntry(entity_id, handler, filter)])
 }
 
-// PRIVATE API
 fn start_state_loop(
   connection: Connection,
   sender: Sender(StateChangeEvent),
