@@ -1,4 +1,4 @@
-import error.{GlomeError, LoopNil}
+import glome/core/error.{GlomeError, LoopNil}
 import gleam/result
 import gleam/io
 
