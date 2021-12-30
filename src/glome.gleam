@@ -1,12 +1,13 @@
 import gleam/io
 import gleam/otp/process.{Receiver}
 import nerf/websocket.{Connection}
+import gleam/option.{Some}
 import gleam/result
 import gleam/map
 import gleam/dynamic
 import glome/homeassistant.{
-  Configuration, HomeAssistant, StateChangeHandlers, add_constrained_handler, add_handler,
-  call_service,
+  HomeAssistant, StateChangeHandlers, add_constrained_handler, add_handler, call_service,
+  get_state,
 }
 import glome/core/authentication.{AccessToken}
 import glome/homeassistant/state_change_event.{StateChangeEvent}
@@ -14,10 +15,10 @@ import glome/homeassistant/entity_id.{EntityId}
 import glome/homeassistant/domain.{InputBoolean, Light}
 import glome/homeassistant/state.{Off, On}
 import glome/core/json
-import glome/environment
+import glome/homeassistant/environment.{Configuration}
 
 pub fn main() {
-  assert Ok(token) = environment.get_env("ACCESS_TOKEN")
+  assert Some(token) = environment.get_access_token()
   assert Ok(_) =
     homeassistant.connect(
       Configuration("192.168.178.62", 8123, AccessToken(token)),
@@ -39,14 +40,10 @@ fn input_boolean_handler(data: StateChangeEvent, home_assistant: HomeAssistant) 
   data
   |> io.debug
 
-  let pay_load =
-    json.encode([json.json_element("entity_id", "light.main_downstairs")])
-
   try resp =
     home_assistant
-    |> call_service(Light, "turn_on", pay_load)
-
-  io.println(resp)
+    |> get_state(EntityId(BinarySensor, "main_downstairs"))
+  io.debug(resp)
 
   io.println("")
   io.println("### ############ ###")

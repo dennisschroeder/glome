@@ -1,5 +1,6 @@
 import gleam/erlang
 import gleam/dynamic.{Dynamic}
+import gleam/option.{Option}
 import gleam/result
 import gleam/io
 import gleam/string
@@ -12,36 +13,24 @@ import nerf/websocket.{
   ConnectError, Connection, ConnectionFailed, ConnectionRefused, Frame, Text,
 }
 import glome/core/authentication.{AccessToken}
+import glome/core/ha_client
 import glome/core/json
 import glome/core/loops
 import glome/core/error.{
   CallServiceError, DeserializationError, GlomeError, LoopNil, WebsocketConnectionError,
 }
+import glome/homeassistant/state.{State}
 import glome/homeassistant/state_change_event.{StateChangeEvent}
 import glome/homeassistant/entity_id.{EntityId}
 import glome/homeassistant/domain.{Domain}
-
-// PUBLIC API
-pub type Configuration {
-  Configuration(host: String, port: Int, access_token: AccessToken)
-}
-
-type HaSystemDetails {
-  HaSystemDetails(
-    host: String,
-    port: Int,
-    access_token: AccessToken,
-    rest_api_path: String,
-  )
-}
+import glome/homeassistant/environment.{Configuration}
+import glome/homeassistant/service
 
 pub opaque type HomeAssistant {
-  HomeAssistant(
-    handlers: StateChangeHandlers,
-    ha_system_details: HaSystemDetails,
-  )
+  HomeAssistant(handlers: StateChangeHandlers, config: Configuration)
 }
 
+// PUBLIC API
 pub type StateChangeHandler =
   fn(StateChangeEvent, HomeAssistant) -> Result(Nil, GlomeError)
 
@@ -76,16 +65,7 @@ pub fn connect(
     start_state_loop(connection, sender)
   })
 
-  let home_assistant =
-    HomeAssistant(
-      handlers: list.new(),
-      ha_system_details: HaSystemDetails(
-        host: config.host,
-        port: config.port,
-        access_token: config.access_token,
-        rest_api_path: "/api",
-      ),
-    )
+  let home_assistant = HomeAssistant(handlers: list.new(), config: config)
 
   let handlers: StateChangeHandlers = conn_handler(home_assistant).handlers
 
@@ -156,39 +136,16 @@ pub fn call_service(
   home_assistant: HomeAssistant,
   domain: Domain,
   service: String,
-  service_data: String,
+  service_data: Option(String),
 ) -> Result(String, GlomeError) {
-  let req =
-    http.default_req()
-    |> http.set_scheme(Http)
-    |> http.set_method(Post)
-    |> http.set_host(home_assistant.ha_system_details.host)
-    |> http.set_port(home_assistant.ha_system_details.port)
-    |> http.set_path(string.concat([
-      home_assistant.ha_system_details.rest_api_path,
-      "/services/",
-      domain.to_string(domain),
-      "/",
-      service,
-    ]))
-    |> http.prepend_req_header("accept", "application/json")
-    |> http.prepend_req_header(
-      "Authorization",
-      string.append(
-        "Bearer ",
-        home_assistant.ha_system_details.access_token.value,
-      ),
-    )
-    |> http.set_req_body(service_data)
+  service.call(home_assistant.config, domain, service, service_data)
+}
 
-  try resp =
-    httpc.send(req)
-    |> result.map_error(fn(error) {
-      io.debug(error)
-      CallServiceError("Error calling service")
-    })
-
-  Ok(resp.body)
+pub fn get_state(
+  from home_assistant: HomeAssistant,
+  for entity_id: EntityId,
+) -> Result(State, GlomeError) {
+  state.get(home_assistant.config, entity_id)
 }
 
 // PRIVATE API

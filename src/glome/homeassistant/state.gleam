@@ -1,8 +1,13 @@
 import gleam/dynamic.{Dynamic}
 import gleam/result
+import gleam/option.{None}
+import gleam/http.{Get}
 import glome/core/error.{GlomeError}
 import glome/core/json
+import glome/core/ha_client
 import glome/homeassistant/domain.{BinarySensor, Domain, InputBoolean, Light}
+import glome/homeassistant/entity_id.{EntityId}
+import glome/homeassistant/environment.{Configuration}
 
 pub type StateValue {
   On
@@ -65,6 +70,24 @@ pub type Attributes {
 
 pub type State {
   State(value: StateValue, attributes: Attributes)
+}
+
+pub fn get(
+  config: Configuration,
+  entity_id: EntityId,
+) -> Result(State, GlomeError) {
+  ha_client.send_ha_rest_api_request(
+    config.host,
+    config.port,
+    config.access_token,
+    Get,
+    ["/states", "/", entity_id.to_string(entity_id)],
+    None,
+  )
+  |> result.map(json.decode)
+  |> result.map(dynamic.from)
+  |> result.map(fn(value) { from_dynamic_by_domain(value, entity_id.domain) })
+  |> result.flatten
 }
 
 pub fn from_dynamic_by_domain(

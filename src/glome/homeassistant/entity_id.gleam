@@ -24,6 +24,10 @@ pub fn from_state_change_event_json(
   ))
 }
 
+pub fn to_string(entity_id: EntityId) -> String {
+  string.concat([domain.to_string(entity_id.domain), ".", entity_id.object_id])
+}
+
 fn from_string(entity_id: String) -> Result(EntityId, GlomeError) {
   entity_id
   |> extract_entity_id_string_parts

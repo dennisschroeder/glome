@@ -66,5 +66,12 @@ pub fn from_string(domain: String) -> Domain {
   }
 }
 
-pub external fn to_string(Domain) -> String =
+pub fn to_string(domain: Domain) -> String {
+  case domain {
+    Domain(value) -> value
+    value -> do_to_string(value)
+  }
+}
+
+external fn do_to_string(Domain) -> String =
   "erlang" "atom_to_binary"
