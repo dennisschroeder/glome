@@ -1,6 +1,5 @@
 import gleeunit
 import gleeunit/should
-import json.{string_field}
 
 pub fn main() {
   gleeunit.main()

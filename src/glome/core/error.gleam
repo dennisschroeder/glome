@@ -10,6 +10,8 @@ pub type GlomeError {
   AuthenticationError(reason: String)
   DeserializationError(cause: GlomeError, reason: String)
   EntityIdFormatError(reason: String)
+  CallServiceError(reason: String)
+  NotAllowedHttpMethod
   LoopNil
 }
 
