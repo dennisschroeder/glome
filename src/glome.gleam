@@ -42,8 +42,7 @@ fn input_boolean_handler(data: StateChangeEvent, home_assistant: HomeAssistant) 
 
   try resp =
     home_assistant
-    |> get_state(EntityId(BinarySensor, "main_downstairs"))
-  io.debug(resp)
+    |> get_state(of: EntityId(Light, "main_downstairs"))
 
   io.println("")
   io.println("### ############ ###")

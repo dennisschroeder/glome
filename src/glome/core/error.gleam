@@ -12,6 +12,8 @@ pub type GlomeError {
   EntityIdFormatError(reason: String)
   CallServiceError(reason: String)
   NotAllowedHttpMethod
+  BadRequest(message: String)
+  NotFound(message: String)
   LoopNil
 }
 

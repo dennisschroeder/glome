@@ -143,7 +143,7 @@ pub fn call_service(
 
 pub fn get_state(
   from home_assistant: HomeAssistant,
-  for entity_id: EntityId,
+  of entity_id: EntityId,
 ) -> Result(State, GlomeError) {
   state.get(home_assistant.config, entity_id)
 }

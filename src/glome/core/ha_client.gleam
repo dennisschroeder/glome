@@ -5,7 +5,9 @@ import gleam/string
 import gleam/httpc
 import gleam/http.{Get, Http, Method, Post}
 import glome/core/authentication.{AccessToken}
-import glome/core/error.{CallServiceError, GlomeError, NotAllowedHttpMethod}
+import glome/core/error.{
+  BadRequest, CallServiceError, GlomeError, NotAllowedHttpMethod, NotFound,
+}
 
 pub fn send_ha_rest_api_request(
   host: String,
@@ -41,7 +43,11 @@ pub fn send_ha_rest_api_request(
       CallServiceError("Error calling service")
     })
 
-  Ok(resp.body)
+  case resp.status {
+    200 -> Ok(resp.body)
+    400 -> Error(BadRequest(resp.body))
+    404 -> Error(NotFound(resp.body))
+  }
 }
 
 fn ensure_post_or_get(method: Method) {

@@ -1,3 +1,4 @@
+import gleam/string
 import gleam/dynamic
 import gleam/result
 import glome/core/json
@@ -22,7 +23,11 @@ pub fn from_json(event_message: String) -> Result(StateChangeEvent, GlomeError) 
     |> result.then(state.from_dynamic_by_domain(_, entity_id.domain))
     |> result.map_error(DeserializationError(
       _,
-      reason: "could not deserialize old_state value",
+      reason: string.concat([
+        "could not deserialize old_state value of [ ",
+        entity_id.to_string(entity_id),
+        " ]",
+      ]),
     ))
 
   try new_state =
@@ -33,7 +38,11 @@ pub fn from_json(event_message: String) -> Result(StateChangeEvent, GlomeError) 
     |> result.then(state.from_dynamic_by_domain(_, entity_id.domain))
     |> result.map_error(DeserializationError(
       _,
-      "could not deserialize new_state value",
+      reason: string.concat([
+        "could not deserialize new_state value of [ ",
+        entity_id.to_string(entity_id),
+        " ]",
+      ]),
     ))
 
   StateChangeEvent(
