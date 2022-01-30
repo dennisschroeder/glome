@@ -6,7 +6,7 @@ import glome/core/error.{GlomeError}
 import glome/core/json
 import glome/core/ha_client
 import glome/homeassistant/domain.{
-  BinarySensor, Domain, InputBoolean, Light, Sensor,
+  BinarySensor, Cover, Domain, InputBoolean, Light, Sensor,
 }
 import glome/homeassistant/entity_id.{EntityId}
 import glome/homeassistant/environment.{Configuration}
@@ -134,12 +134,27 @@ pub fn from_dynamic_by_domain(
     |> result.map(Attributes)
 
   case domain {
+    Cover -> map_to_open_closed_state(state_value_string, attributes)
     Light -> map_to_light_state(state_value_string, attributes)
     InputBoolean -> map_to_boolean_state(state_value_string, attributes)
     BinarySensor -> map_to_binary_sensor_state(state_value_string, attributes)
     Sensor -> map_to_sensor_state(state_value_string, attributes)
     domain -> Ok(State(StateValue(state_value_string), attributes))
   }
+}
+
+fn map_to_open_closed_state(
+  state_value: String,
+  attributes: Attributes,
+) -> Result(State, GlomeError) {
+  let mapped_state_value = case state_value {
+    "open" -> Open
+    "closed" -> Closed
+    "unavailable" -> Unavailable
+    value -> StateValue(value)
+  }
+
+  Ok(State(mapped_state_value, attributes))
 }
 
 fn map_to_light_state(

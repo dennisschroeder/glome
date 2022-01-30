@@ -12,7 +12,7 @@ import glome/homeassistant.{
 import glome/core/authentication.{AccessToken}
 import glome/homeassistant/state_change_event.{StateChangeEvent}
 import glome/homeassistant/entity_id.{EntityId}
-import glome/homeassistant/domain.{InputBoolean, Light}
+import glome/homeassistant/domain.{Cover, InputBoolean, Light}
 import glome/homeassistant/state.{Off, On}
 import glome/core/json
 import glome/homeassistant/environment.{Configuration}
@@ -24,10 +24,9 @@ pub fn main() {
       Configuration("192.168.178.62", 8123, AccessToken(token)),
       fn(home_assistant: HomeAssistant) {
         home_assistant
-        |> add_constrained_handler(
-          for: EntityId(InputBoolean, "*"),
+        |> add_handler(
+          for: EntityId(Cover, "*"),
           handler: input_boolean_handler,
-          constraint: got_turned_on,
         )
       },
     )
