@@ -6,7 +6,19 @@ import glome/core/error.{GlomeError}
 import glome/core/json
 import glome/core/ha_client
 import glome/homeassistant/domain.{
-  BinarySensor, Cover, Domain, InputBoolean, Light, Sensor,
+  BinarySensor, Cover, Domain, InputBoolean, Light, MediaPlayer, Sensor,
+}
+import glome/homeassistant/attributes.{
+  AQISensor, Attributes, BatteryCharging, BatterySensor, CarbonDioxideSensor, CarbonMonoxideSensor,
+  ColdSensor, ConnectivitySensor, CurrentSensor, DateSensor, DoorSensor, EnergySensor,
+  FrequencySensor, GarageDoorSensor, GasSensor, HeatSensor, HumiditySensor, IlluminanceSensor,
+  LightSensor, LockSensor, MoistureSensor, MonetarySensor, MotionSensor, MovingSensor,
+  NitrogenDioxideSensor, NitrogenMonoxideSensor, NitrousOxideSensor, OccupancySensor,
+  OpeningSensor, OzoneSensor, PM10Sensor, PM1Sensor, PM25Sensor, PlugSensor, PowerFactorSensor,
+  PowerSensor, PresenceSensor, PressureSensor, ProblemSensor, RunningSensor, SafetySensor,
+  SignalStrengthSensor, SmokeSensor, SoundSensor, SulphurDioxideSensor, TV, TamperSensor,
+  TemperatureSensor, TimestampSensor, UnknownDeviceClass, UpdateSensor, VibrationSensor,
+  VolatileOrganicCompoundsSensor, VoltageSensor, WindowSensor,
 }
 import glome/homeassistant/entity_id.{EntityId}
 import glome/homeassistant/environment.{Configuration}
@@ -92,12 +104,14 @@ pub type StateValue {
   VibrationDetected
   NoVibration
   Heat
-  Unavailable
-  StateValue(value: String)
-}
+  // MediaPlayer
+  Idle
+  Playing
+  Paused
 
-pub type Attributes {
-  Attributes(Dynamic)
+  Unavailable
+  Unknown
+  StateValue(value: String)
 }
 
 pub type State {
@@ -131,9 +145,12 @@ pub fn from_dynamic_by_domain(
     |> result.then(json.get_field_as_string)
   try attributes =
     json.get_field_by_path(state_map, "attributes")
-    |> result.map(Attributes)
+    |> result.then(fn(att_blob) {
+      attributes.from_dynamic_and_domain(att_blob, domain)
+    })
 
   case domain {
+    MediaPlayer -> map_to_media_player_state(state_value_string, attributes)
     Cover -> map_to_open_closed_state(state_value_string, attributes)
     Light -> map_to_light_state(state_value_string, attributes)
     InputBoolean -> map_to_boolean_state(state_value_string, attributes)
@@ -141,6 +158,19 @@ pub fn from_dynamic_by_domain(
     Sensor -> map_to_sensor_state(state_value_string, attributes)
     domain -> Ok(State(StateValue(state_value_string), attributes))
   }
+}
+
+fn map_to_media_player_state(state_value: String, attributes: Attributes) {
+  let mapped_state_value = case state_value, attributes.device_class {
+    "on", TV -> On
+    "off", TV -> Off
+    "idle", UnknownDeviceClass -> Idle
+    "playing", UnknownDeviceClass -> Playing
+    "paused", UnknownDeviceClass -> Paused
+    "unavailable", _ -> Unavailable
+    "unknown", _ -> Unknown
+  }
+  Ok(State(mapped_state_value, attributes))
 }
 
 fn map_to_open_closed_state(
@@ -186,115 +216,102 @@ fn map_to_binary_sensor_state(
   state_value: String,
   attributes: Attributes,
 ) -> Result(State, GlomeError) {
-  let Attributes(attributes) = attributes
+  let mapped_state_value = case state_value, attributes.device_class {
+    "on", BatterySensor -> Low
+    "on", BatteryCharging -> Charging
+    "on", ColdSensor -> Cold
+    "on", ConnectivitySensor -> Connected
+    "on", DoorSensor -> Open
+    "on", GarageDoorSensor -> Open
+    "on", GasSensor -> GasDetected
+    "on", HeatSensor -> Hot
+    "on", LightSensor -> LightDetected
+    "on", LockSensor -> Unlocked
+    "on", MoistureSensor -> MoistureDetected
+    "on", MotionSensor -> MotionDetected
+    "on", MovingSensor -> Moving
+    "on", OccupancySensor -> Occupied
+    "on", OpeningSensor -> Open
+    "on", PlugSensor -> PluggedIn
+    "on", PowerSensor -> PluggedIn
+    "on", PresenceSensor -> Home
+    "on", ProblemSensor -> ProblemDetected
+    "on", RunningSensor -> Running
+    "on", SafetySensor -> Unsafe
+    "on", SmokeSensor -> SmokeDetected
+    "on", SoundSensor -> SoundDetected
+    "on", TamperSensor -> TamperingDetected
+    "on", UpdateSensor -> UpdateAvailable
+    "on", VibrationSensor -> VibrationDetected
+    "on", WindowSensor -> Open
 
-  let device_class =
-    json.get_field_by_path(attributes, "device_class")
-    |> result.then(json.get_field_as_string)
-    |> result.unwrap("unknown_device_class")
-  let mapped_state_value = case state_value, device_class {
-    "on", "battery" -> Low
-    "on", "battery_charging" -> Charging
-    "on", "cold" -> Cold
-    "on", "connectivity" -> Connected
-    "on", "door" -> Open
-    "on", "garage_door" -> Open
-    "on", "gas" -> GasDetected
-    "on", "heat" -> Hot
-    "on", "light" -> LightDetected
-    "on", "lock" -> Unlocked
-    "on", "moisture" -> MoistureDetected
-    "on", "motion" -> MotionDetected
-    "on", "moving" -> Moving
-    "on", "occupancy" -> Occupied
-    "on", "opening" -> Open
-    "on", "plug" -> PluggedIn
-    "on", "power" -> PluggedIn
-    "on", "presence" -> Home
-    "on", "problem" -> ProblemDetected
-    "on", "running" -> Running
-    "on", "safety" -> Unsafe
-    "on", "smoke" -> SmokeDetected
-    "on", "sound" -> SoundDetected
-    "on", "tamper" -> TamperingDetected
-    "on", "update" -> UpdateAvailable
-    "on", "vibration" -> VibrationDetected
-    "on", "window" -> Open
-
-    "off", "battery" -> Normal
-    "off", "battery_charging" -> NotCharging
-    "off", "cold" -> Normal
-    "off", "connectivity" -> Disconnected
-    "off", "door" -> Closed
-    "off", "garage_ door" -> Open
-    "off", "garage_ gas" -> NoGas
-    "off", "heat" -> Normal
-    "off", "light" -> NoLight
-    "off", "lock" -> Locked
-    "off", "moisture" -> NoMoisture
-    "off", "motion" -> NoMotion
-    "off", "moving" -> NotMoving
-    "off", "occupancy" -> NotOccupied
-    "off", "opening" -> Closed
-    "off", "plug" -> Unplugged
-    "off", "presence" -> Away
-    "off", "problem" -> NoProblem
-    "off", "running" -> NotRunning
-    "off", "safety" -> Safe
-    "off", "smoke" -> NoSmoke
-    "off", "sound" -> NoSound
-    "off", "tamper" -> NoTampering
-    "off", "update" -> UpToDate
-    "off", "vibration" -> NoVibration
-    "off", "window" -> Closed
+    "off", BatterySensor -> Normal
+    "off", BatteryCharging -> NotCharging
+    "off", ColdSensor -> Normal
+    "off", ConnectivitySensor -> Disconnected
+    "off", DoorSensor -> Closed
+    "off", GarageDoorSensor -> Open
+    "off", GasSensor -> NoGas
+    "off", HeatSensor -> Normal
+    "off", LightSensor -> NoLight
+    "off", LockSensor -> Locked
+    "off", MoistureSensor -> NoMoisture
+    "off", MotionSensor -> NoMotion
+    "off", MovingSensor -> NotMoving
+    "off", OccupancySensor -> NotOccupied
+    "off", OpeningSensor -> Closed
+    "off", PlugSensor -> Unplugged
+    "off", PresenceSensor -> Away
+    "off", ProblemSensor -> NoProblem
+    "off", RunningSensor -> NotRunning
+    "off", SafetySensor -> Safe
+    "off", SmokeSensor -> NoSmoke
+    "off", SoundSensor -> NoSound
+    "off", TamperSensor -> NoTampering
+    "off", UpdateSensor -> UpToDate
+    "off", VibrationSensor -> NoVibration
+    "off", WindowSensor -> Closed
     "unavailable", _ -> Unavailable
     value, _ -> StateValue(value)
   }
-  Ok(State(mapped_state_value, Attributes(attributes)))
+  Ok(State(mapped_state_value, attributes))
 }
 
 fn map_to_sensor_state(
   state_value: String,
   attributes: Attributes,
 ) -> Result(State, GlomeError) {
-  let Attributes(attributes) = attributes
-
-  let device_class =
-    json.get_field_by_path(attributes, "device_class")
-    |> result.then(json.get_field_as_string)
-    |> result.unwrap("unknown_device_class")
-
-  let mapped_state_value = case device_class {
-    "aqi" -> AirQualityIndex(state_value)
-    "battery" -> Battery(state_value)
-    "carbon_dioxide" -> CarbonDioxide(state_value)
-    "carbon_monoxide" -> CarbonMonoxide(state_value)
-    "current" -> Current(state_value)
-    "date" -> Date(state_value)
-    "energy" -> Energy(state_value)
-    "frequency" -> Frequency(state_value)
-    "gas" -> Gas(state_value)
-    "humidity" -> Humidity(state_value)
-    "illuminance" -> Illuminance(state_value)
-    "monetary" -> Monetary(state_value)
-    "nitrogen_dioxide" -> NitrogenDioxide(state_value)
-    "nitrogen_monoxide" -> NitrogenMonoxide(state_value)
-    "nitrous_oxide" -> NitrousOxide(state_value)
-    "ozone" -> Ozone(state_value)
-    "pm1" -> PM1(state_value)
-    "pm10" -> PM10(state_value)
-    "pm25" -> PM25(state_value)
-    "power_factor" -> PowerFactor(state_value)
-    "power" -> Power(state_value)
-    "pressure" -> Pressure(state_value)
-    "signal_strength" -> SignalStrength(state_value)
-    "sulphur_dioxide" -> SulphurDioxide(state_value)
-    "temperature" -> Temperature(state_value)
-    "timestamp" -> Timestamp(state_value)
-    "volatile_organic_compounds" -> VolatileOrganicCompounds(state_value)
-    "voltage" -> Voltage(state_value)
+  let mapped_state_value = case attributes.device_class {
+    AQISensor -> AirQualityIndex(state_value)
+    BatterySensor -> Battery(state_value)
+    CarbonDioxideSensor -> CarbonDioxide(state_value)
+    CarbonMonoxideSensor -> CarbonMonoxide(state_value)
+    CurrentSensor -> Current(state_value)
+    DateSensor -> Date(state_value)
+    EnergySensor -> Energy(state_value)
+    FrequencySensor -> Frequency(state_value)
+    GasSensor -> Gas(state_value)
+    HumiditySensor -> Humidity(state_value)
+    IlluminanceSensor -> Illuminance(state_value)
+    MonetarySensor -> Monetary(state_value)
+    NitrogenDioxideSensor -> NitrogenDioxide(state_value)
+    NitrogenMonoxideSensor -> NitrogenMonoxide(state_value)
+    NitrousOxideSensor -> NitrousOxide(state_value)
+    OzoneSensor -> Ozone(state_value)
+    PM1Sensor -> PM1(state_value)
+    PM10Sensor -> PM10(state_value)
+    PM25Sensor -> PM25(state_value)
+    PowerFactorSensor -> PowerFactor(state_value)
+    PowerSensor -> Power(state_value)
+    PressureSensor -> Pressure(state_value)
+    SignalStrengthSensor -> SignalStrength(state_value)
+    SulphurDioxideSensor -> SulphurDioxide(state_value)
+    TemperatureSensor -> Temperature(state_value)
+    TimestampSensor -> Timestamp(state_value)
+    VolatileOrganicCompoundsSensor -> VolatileOrganicCompounds(state_value)
+    VoltageSensor -> Voltage(state_value)
     _ -> StateValue(state_value)
   }
 
-  Ok(State(mapped_state_value, Attributes(attributes)))
+  Ok(State(mapped_state_value, attributes))
 }
