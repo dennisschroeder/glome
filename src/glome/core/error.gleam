@@ -1,6 +1,7 @@
 import gleam/string
-import gleam/dynamic.{DecodeError}
+import gleam/dynamic.{DecodeError, DecodeErrors}
 import gleam/result
+import gleam/list
 import gleam/int
 import nerf/websocket.{ConnectError, ConnectionFailed, ConnectionRefused}
 
@@ -17,8 +18,15 @@ pub type GlomeError {
   LoopNil
 }
 
-pub fn stringify_decode_error(error: DecodeError) {
-  string.concat(["expected: ", error.expected, "got instead: ", error.found])
+pub fn stringify_decode_error(error: DecodeError) -> String {
+  string.concat([
+    "expected: ",
+    error.expected,
+    " got instead: ",
+    error.found,
+    " at path: ",
+    string.join(error.path, "."),
+  ])
 }
 
 pub fn json_decode_error(reason: String) -> GlomeError {
@@ -29,7 +37,20 @@ pub fn json_decode_error(reason: String) -> GlomeError {
   ]))
 }
 
-pub fn map_decode_error(error: Result(a, DecodeError)) {
+pub fn map_decode_errors(
+  errors: Result(a, DecodeErrors),
+) -> Result(a, GlomeError) {
+  result.map_error(
+    errors,
+    fn(decode_errors: DecodeErrors) {
+      list.map(decode_errors, stringify_decode_error)
+      |> string.join("ln")
+      |> json_decode_error
+    },
+  )
+}
+
+pub fn map_decode_error(error: Result(a, DecodeError)) -> Result(a, GlomeError) {
   result.map_error(
     error,
     fn(decode_error: DecodeError) {

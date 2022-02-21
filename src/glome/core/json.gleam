@@ -1,4 +1,4 @@
-import gleam/dynamic.{DecodeError, Dynamic}
+import gleam/dynamic.{DecodeError, Dynamic, dynamic, string}
 import gleam/result
 import gleam/string
 import gleam/list
@@ -21,9 +21,8 @@ pub fn string_field(
 ) -> Result(String, GlomeError) {
   decode(data)
   |> dynamic.from
-  |> dynamic.field(field_name)
-  |> result.then(dynamic.string)
-  |> error.map_decode_error
+  |> dynamic.field(field_name, string)
+  |> error.map_decode_errors
 }
 
 pub fn get_field_by_path(
@@ -32,16 +31,18 @@ pub fn get_field_by_path(
 ) -> Result(Dynamic, GlomeError) {
   case string.split(path, ".") {
     [x] ->
-      dynamic.field(data, x)
-      |> error.map_decode_error
+      data 
+      |> dynamic.field(x, dynamic)
+      |> error.map_decode_errors
     [x, ..xs] ->
-      dynamic.field(data, x)
-      |> error.map_decode_error
+      data 
+      |> dynamic.field(x, dynamic)
+      |> error.map_decode_errors
       |> result.then(fn(dyn) { get_field_by_path(dyn, string.join(xs, ".")) })
   }
 }
 
 pub fn get_field_as_string(value: Dynamic) -> Result(String, GlomeError) {
   dynamic.string(value)
-  |> error.map_decode_error
+  |> error.map_decode_errors
 }
