@@ -10,7 +10,7 @@ repository = { type = "github", user = "dennisschroeder", repo = "glome" }
 links = [{ title = "Website", href = "https://gleam.run" }]
 
 [dependencies]
-gleam_stdlib = "~> 0.18"
+gleam_stdlib = "~> 0.20"
 nerf = "~> 0.1"
 jsone = "~> 1.7"
 gleam_otp = "~> 0.3"

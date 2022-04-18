@@ -56,13 +56,13 @@ pub fn connect(
   let #(sender, receiver) = process.new_channel()
 
   process.start(fn() {
-    try connection =
+    assert Ok(connection) =
       websocket.connect(config.host, ha_api_path, config.port, [])
       |> error.map_connection_error
 
-    try _ = authentication.authenticate(connection, config.access_token)
+    assert Ok(_) = authentication.authenticate(connection, config.access_token)
 
-    start_state_loop(connection, sender)
+    assert Ok(_) = start_state_loop(connection, sender)
   })
 
   let home_assistant = HomeAssistant(handlers: list.new(), config: config)

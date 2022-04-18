@@ -31,11 +31,11 @@ pub fn get_field_by_path(
 ) -> Result(Dynamic, GlomeError) {
   case string.split(path, ".") {
     [x] ->
-      data 
+      data
       |> dynamic.field(x, dynamic)
       |> error.map_decode_errors
     [x, ..xs] ->
-      data 
+      data
       |> dynamic.field(x, dynamic)
       |> error.map_decode_errors
       |> result.then(fn(dyn) { get_field_by_path(dyn, string.join(xs, ".")) })

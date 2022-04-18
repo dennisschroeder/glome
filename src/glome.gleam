@@ -12,7 +12,7 @@ import glome/homeassistant.{
 import glome/core/authentication.{AccessToken}
 import glome/homeassistant/state_change_event.{StateChangeEvent}
 import glome/homeassistant/entity_id.{EntityId}
-import glome/homeassistant/domain.{Cover, InputBoolean, Light}
+import glome/homeassistant/domain.{BinarySensor, Cover, InputBoolean, Light}
 import glome/homeassistant/state.{MotionDetected, Normal, Off, On}
 import glome/core/json
 import glome/homeassistant/environment.{Configuration}
@@ -27,7 +27,7 @@ pub fn main() {
         |> add_constrained_handler(
           for: EntityId(BinarySensor, "*"),
           handler: motion_sensor_handler,
-          constraint: motion_detected
+          constraint: motion_detected,
         )
       },
     )
@@ -37,7 +37,7 @@ fn motion_sensor_handler(data: StateChangeEvent, home_assistant: HomeAssistant) 
   try light_state =
     home_assistant
     |> get_state(of: EntityId(Light, "main_downstairs"))
-    
+
   Ok(Nil)
 }
 

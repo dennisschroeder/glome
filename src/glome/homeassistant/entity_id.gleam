@@ -46,7 +46,7 @@ fn extract_entity_id_string_parts(
         "domain.object_id ]",
       ])))
     [domain, object_id] -> Ok(#(domain, object_id))
-    [_, _, .._] ->
+    [_, _, ..] ->
       Error(EntityIdFormatError(string.concat([
         "malformed entity_id format. Entity_id shall contain exactly 2 parts not more \n. Given format is [ ",
         entity_id,

@@ -21,14 +21,11 @@ pub fn from_json(event_message: String) -> Result(StateChangeEvent, GlomeError) 
     |> dynamic.from
     |> json.get_field_by_path("event.data.old_state")
     |> result.then(state.from_dynamic_by_domain(_, entity_id.domain))
-    |> result.map_error(DeserializationError(
-      _,
-      reason: string.concat([
-        "could not deserialize old_state value of [ ",
-        entity_id.to_string(entity_id),
-        " ]",
-      ]),
-    ))
+    |> result.map_error(DeserializationError(_, reason: string.concat([
+      "could not deserialize old_state value of [ ",
+      entity_id.to_string(entity_id),
+      " ]",
+    ])))
 
   try new_state =
     event_message
@@ -36,14 +33,11 @@ pub fn from_json(event_message: String) -> Result(StateChangeEvent, GlomeError) 
     |> dynamic.from
     |> json.get_field_by_path("event.data.new_state")
     |> result.then(state.from_dynamic_by_domain(_, entity_id.domain))
-    |> result.map_error(DeserializationError(
-      _,
-      reason: string.concat([
-        "could not deserialize new_state value of [ ",
-        entity_id.to_string(entity_id),
-        " ]",
-      ]),
-    ))
+    |> result.map_error(DeserializationError(_, reason: string.concat([
+      "could not deserialize new_state value of [ ",
+      entity_id.to_string(entity_id),
+      " ]",
+    ])))
 
   StateChangeEvent(
     entity_id: entity_id,
