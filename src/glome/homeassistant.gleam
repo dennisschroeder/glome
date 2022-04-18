@@ -52,7 +52,11 @@ pub fn connect(
   config: Configuration,
   conn_handler: fn(HomeAssistant) -> HomeAssistant,
 ) -> Result(Nil, GlomeError) {
-  let ha_api_path = "/api/websocket"
+
+  let ha_api_path = case config.host {
+    "supervisor" -> "/core/websocket"
+    _ -> "/api/websocket"
+  }
   let #(sender, receiver) = process.new_channel()
 
   process.start(fn() {

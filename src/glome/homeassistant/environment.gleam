@@ -23,5 +23,10 @@ pub fn get_access_token() -> Option(String) {
   |> option.from_result
 }
 
+pub fn get_ha_supervisor_token() -> Option(String) {
+  get_env("SUPERVISOR_TOKEN")
+  |> option.from_result
+}
+
 pub external fn get_env(String) -> Result(String, Nil) =
   "system" "get_var"
