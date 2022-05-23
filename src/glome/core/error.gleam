@@ -3,7 +3,11 @@ import gleam/dynamic.{DecodeError, DecodeErrors}
 import gleam/result
 import gleam/list
 import gleam/int
+import gleam/list
 import nerf/websocket.{ConnectError, ConnectionFailed, ConnectionRefused}
+import gleam/json.{
+  UnexpectedByte, UnexpectedEndOfInput, UnexpectedFormat, UnexpectedSequence,
+}
 
 pub type GlomeError {
   WebsocketConnectionError(reason: String)
@@ -16,6 +20,35 @@ pub type GlomeError {
   BadRequest(message: String)
   NotFound(message: String)
   LoopNil
+}
+
+pub fn json_decode_to_dynamic_decode_error(
+  json_error: json.DecodeError,
+) -> List(dynamic.DecodeError) {
+  case json_error {
+    UnexpectedEndOfInput -> [
+      dynamic.DecodeError(
+        expected: "more input",
+        found: "end of input",
+        path: [],
+      ),
+    ]
+    UnexpectedByte(byte, position) -> [
+      dynamic.DecodeError(
+        expected: "other byte",
+        found: byte,
+        path: [int.to_string(position)],
+      ),
+    ]
+    UnexpectedSequence(byte, position) -> [
+      dynamic.DecodeError(
+        expected: "other byte",
+        found: byte,
+        path: [int.to_string(position)],
+      ),
+    ]
+    UnexpectedFormat(list) -> list
+  }
 }
 
 pub fn stringify_decode_error(error: DecodeError) -> String {
@@ -67,7 +100,7 @@ pub fn map_connection_error(
     error,
     fn(conn_error: ConnectError) {
       case conn_error {
-        ConnectionRefused(status, headers) ->
+        ConnectionRefused(status, _) ->
           string.concat([
             "connection from homeassistant refused,\n",
             "server responded with status [ ",
@@ -76,7 +109,7 @@ pub fn map_connection_error(
           ])
           |> WebsocketConnectionError
 
-        ConnectionFailed(reason) ->
+        ConnectionFailed(_) ->
           string.concat([
             "connection to homeassistant failed,\n", "due to: [ ", "unknown connection error",
             " ]",

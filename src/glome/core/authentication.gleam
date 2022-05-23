@@ -1,7 +1,8 @@
 import gleam/result
 import nerf/websocket.{Connection, Text}
 import glome/core/error.{AuthenticationError, GlomeError}
-import glome/core/json
+import glome/core/serde
+import gleam/json.{object, string}
 
 pub type AccessToken {
   AccessToken(value: String)
@@ -13,10 +14,11 @@ pub fn authenticate(
 ) -> Result(String, GlomeError) {
   try _ = authentication_phase_started(connection)
   let auth_message =
-    json.encode([
-      json.json_element("type", "auth"),
-      json.json_element("access_token", access_token.value),
+    object([
+      #("type", string("auth")),
+      #("access_token", string(access_token.value)),
     ])
+    |> json.to_string
   websocket.send(connection, auth_message)
 
   try Text(auth_response) =
@@ -28,7 +30,7 @@ pub fn authenticate(
     })
 
   try type_field =
-    json.string_field(auth_response, "type")
+    serde.string_field(auth_response, "type")
     |> result.map_error(fn(_) {
       AuthenticationError(
         "authentication failed! Auth result message has no field [ type ]!",
@@ -53,7 +55,7 @@ fn authentication_phase_started(
     })
 
   try auth_required =
-    json.string_field(initial_message, "type")
+    serde.string_field(initial_message, "type")
     |> result.map_error(fn(_) {
       AuthenticationError(
         "could not start auth phase! Auth message has no field [ type ]!",

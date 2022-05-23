@@ -1,6 +1,7 @@
-import gleam/dynamic.{Dynamic}
+import gleam/dynamic.{DecodeError, Dynamic, field, optional, string}
 import gleam/result
-import glome/core/json
+import gleam/option.{Option}
+import glome/core/serde
 import glome/core/error.{GlomeError}
 import glome/homeassistant/domain.{BinarySensor, Domain, MediaPlayer, Sensor}
 
@@ -73,7 +74,30 @@ pub type DeviceClass {
 }
 
 pub type Attributes {
-  Attributes(friendly_name: String, device_class: DeviceClass, raw: Dynamic)
+  Attributes(
+    friendly_name: Option(String),
+    device_class: DeviceClass,
+    raw: Dynamic,
+  )
+}
+
+pub fn decoder(
+  data: Dynamic,
+  domain: Domain,
+) -> Result(Attributes, List(DecodeError)) {
+  let device_class =
+    field("device_class", string)(data)
+    |> result.unwrap("unknown_device_class")
+    |> map_device_class_by_domain(domain)
+
+  try friendly_name = field("friendly_name", optional(string))(data)
+
+  Attributes(
+    friendly_name: friendly_name,
+    device_class: device_class,
+    raw: data,
+  )
+  |> Ok
 }
 
 pub fn from_dynamic_and_domain(
@@ -81,11 +105,29 @@ pub fn from_dynamic_and_domain(
   domain: Domain,
 ) -> Result(Attributes, GlomeError) {
   let device_class_value =
-    json.get_field_by_path(attributes_message, "device_class")
-    |> result.then(json.get_field_as_string)
+    serde.get_field_by_path(attributes_message, "device_class")
+    |> result.then(serde.get_field_as_string)
     |> result.unwrap("unknown_device_class")
 
-  let device_class = case device_class_value, domain {
+  let device_class = map_device_class_by_domain(device_class_value, domain)
+
+  let friendly_name =
+    serde.get_field_by_path(attributes_message, "friendly_name")
+    |> result.then(serde.get_field_as_string)
+    |> option.from_result
+
+  Ok(Attributes(
+    device_class: device_class,
+    friendly_name: friendly_name,
+    raw: attributes_message,
+  ))
+}
+
+fn map_device_class_by_domain(
+  device_class_value: String,
+  domain: Domain,
+) -> DeviceClass {
+  case device_class_value, domain {
     //MediaPlayer
     "tv", MediaPlayer -> TV
     "speaker", MediaPlayer -> Speaker
@@ -154,15 +196,4 @@ pub fn from_dynamic_and_domain(
     "unknown_device_class", _ -> UnknownDeviceClass
     value, _ -> DeviceClass(value)
   }
-
-  let friendly_name =
-    json.get_field_by_path(attributes_message, "friendly_name")
-    |> result.then(json.get_field_as_string)
-    |> result.unwrap("unknown_friendly_name")
-
-  Ok(Attributes(
-    device_class: device_class,
-    friendly_name: friendly_name,
-    raw: attributes_message,
-  ))
 }

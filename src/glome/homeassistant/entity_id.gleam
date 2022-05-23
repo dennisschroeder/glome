@@ -1,9 +1,10 @@
 import gleam/string
 import gleam/result
-import gleam/dynamic
-import glome/core/json
+import gleam/dynamic.{DecodeError, Dynamic, dynamic, string}
+import gleam/json
 import glome/core/error.{DeserializationError, EntityIdFormatError, GlomeError}
-import glome/homeassistant/domain.{AlarmControlPanel, BinarySensor, Domain}
+import glome/core/serde
+import glome/homeassistant/domain.{Domain}
 
 pub type EntityId {
   EntityId(domain: Domain, object_id: String)
@@ -13,15 +14,43 @@ pub fn from_state_change_event_json(
   json: String,
 ) -> Result(EntityId, GlomeError) {
   json
-  |> json.decode
+  |> json.decode(dynamic)
   |> dynamic.from
-  |> json.get_field_by_path("event.data.entity_id")
-  |> result.then(json.get_field_as_string)
+  |> serde.get_field_by_path("event.data.entity_id")
+  |> result.then(serde.get_field_as_string)
   |> result.then(from_string)
   |> result.map_error(DeserializationError(
     _,
     reason: "could not create EntityId(Domain,String) from state change event",
   ))
+}
+
+pub fn entiy_id_decoder(data: Dynamic) -> Result(EntityId, List(DecodeError)) {
+  data
+  |> string
+  |> result.then(decode_entity_id)
+  |> result.map(map_to_entity_id)
+}
+
+fn decode_entity_id(
+  entity_id: String,
+) -> Result(#(String, String), List(DecodeError)) {
+  case string.split(entity_id, ".") {
+    [_] ->
+      Error(DecodeError(
+        expected: "domain.object_id",
+        found: entity_id,
+        path: [],
+      ))
+    [domain, object_id] -> Ok(#(domain, object_id))
+    [_, _, ..] ->
+      Error(DecodeError(
+        expected: "domain.object_id",
+        found: entity_id,
+        path: [],
+      ))
+  }
+  |> result.map_error(fn(error) { [error] })
 }
 
 pub fn to_string(entity_id: EntityId) -> String {

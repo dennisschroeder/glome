@@ -1,9 +1,9 @@
-import gleam/dynamic.{Dynamic}
+import gleam/dynamic.{DecodeError, Dynamic, field, string}
 import gleam/result
 import gleam/option.{None}
 import gleam/http.{Get}
 import glome/core/error.{GlomeError}
-import glome/core/json
+import glome/core/serde
 import glome/core/ha_client
 import glome/homeassistant/domain.{
   BinarySensor, Cover, Domain, InputBoolean, Light, MediaPlayer, Sensor,
@@ -108,6 +108,7 @@ pub type StateValue {
   Idle
   Playing
   Paused
+  Buffering
 
   Unavailable
   Unknown
@@ -130,24 +131,15 @@ pub fn get(
     ["/states", "/", entity_id.to_string(entity_id)],
     None,
   )
-  |> result.map(json.decode)
-  |> result.map(dynamic.from)
-  |> result.map(fn(value) { from_dynamic_by_domain(value, entity_id.domain) })
-  |> result.flatten
+  |> result.then(serde.decode_to_dynamic)
+  |> result.map_error(fn(_) { [] })
+  |> result.then(decode(_, entity_id.domain))
+  |> error.map_decode_errors
 }
 
-pub fn from_dynamic_by_domain(
-  state_map: Dynamic,
-  domain: Domain,
-) -> Result(State, GlomeError) {
-  try state_value_string =
-    json.get_field_by_path(state_map, "state")
-    |> result.then(json.get_field_as_string)
-  try attributes =
-    json.get_field_by_path(state_map, "attributes")
-    |> result.then(fn(att_blob) {
-      attributes.from_dynamic_and_domain(att_blob, domain)
-    })
+pub fn decode(data: Dynamic, domain: Domain) -> Result(State, List(DecodeError)) {
+  try state_value_string = field("state", string)(data)
+  try attributes = field("attributes", attributes.decoder(_, domain))(data)
 
   case domain {
     MediaPlayer -> map_to_media_player_state(state_value_string, attributes)
@@ -156,27 +148,35 @@ pub fn from_dynamic_by_domain(
     InputBoolean -> map_to_boolean_state(state_value_string, attributes)
     BinarySensor -> map_to_binary_sensor_state(state_value_string, attributes)
     Sensor -> map_to_sensor_state(state_value_string, attributes)
-    domain -> Ok(State(StateValue(state_value_string), attributes))
+    _ -> State(StateValue(state_value_string), attributes)
   }
+  |> Ok
 }
 
-fn map_to_media_player_state(state_value: String, attributes: Attributes) {
+fn map_to_media_player_state(
+  state_value: String,
+  attributes: Attributes,
+) -> State {
   let mapped_state_value = case state_value, attributes.device_class {
     "on", TV -> On
     "off", TV -> Off
+    "on", UnknownDeviceClass -> On
+    "off", UnknownDeviceClass -> Off
     "idle", UnknownDeviceClass -> Idle
+    "buffering", UnknownDeviceClass -> Buffering
     "playing", UnknownDeviceClass -> Playing
     "paused", UnknownDeviceClass -> Paused
     "unavailable", _ -> Unavailable
     "unknown", _ -> Unknown
+    state, _ -> StateValue(state)
   }
-  Ok(State(mapped_state_value, attributes))
+  State(mapped_state_value, attributes)
 }
 
 fn map_to_open_closed_state(
   state_value: String,
   attributes: Attributes,
-) -> Result(State, GlomeError) {
+) -> State {
   let mapped_state_value = case state_value {
     "open" -> Open
     "closed" -> Closed
@@ -184,38 +184,32 @@ fn map_to_open_closed_state(
     value -> StateValue(value)
   }
 
-  Ok(State(mapped_state_value, attributes))
+  State(mapped_state_value, attributes)
 }
 
-fn map_to_light_state(
-  state_value: String,
-  attributes: Attributes,
-) -> Result(State, GlomeError) {
+fn map_to_light_state(state_value: String, attributes: Attributes) -> State {
   let mapped_state_value = case state_value {
     "on" -> On
     "off" -> Off
     "unavailable" -> Unavailable
     value -> StateValue(value)
   }
-  Ok(State(mapped_state_value, attributes))
+  State(mapped_state_value, attributes)
 }
 
-fn map_to_boolean_state(
-  state_value: String,
-  attributes: Attributes,
-) -> Result(State, GlomeError) {
+fn map_to_boolean_state(state_value: String, attributes: Attributes) -> State {
   let mapped_state_value = case state_value {
     "on" -> On
     "off" -> Off
     value -> StateValue(value)
   }
-  Ok(State(mapped_state_value, attributes))
+  State(mapped_state_value, attributes)
 }
 
 fn map_to_binary_sensor_state(
   state_value: String,
   attributes: Attributes,
-) -> Result(State, GlomeError) {
+) -> State {
   let mapped_state_value = case state_value, attributes.device_class {
     "on", BatterySensor -> Low
     "on", BatteryCharging -> Charging
@@ -274,13 +268,10 @@ fn map_to_binary_sensor_state(
     "unavailable", _ -> Unavailable
     value, _ -> StateValue(value)
   }
-  Ok(State(mapped_state_value, attributes))
+  State(mapped_state_value, attributes)
 }
 
-fn map_to_sensor_state(
-  state_value: String,
-  attributes: Attributes,
-) -> Result(State, GlomeError) {
+fn map_to_sensor_state(state_value: String, attributes: Attributes) -> State {
   let mapped_state_value = case attributes.device_class {
     AQISensor -> AirQualityIndex(state_value)
     BatterySensor -> Battery(state_value)
@@ -313,5 +304,5 @@ fn map_to_sensor_state(
     _ -> StateValue(state_value)
   }
 
-  Ok(State(mapped_state_value, attributes))
+  State(mapped_state_value, attributes)
 }

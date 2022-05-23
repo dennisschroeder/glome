@@ -1,6 +1,6 @@
 import gleam/result
 import gleam/int
-import gleam/option.{None, Option}
+import gleam/option.{Option}
 import glome/core/authentication.{AccessToken}
 
 pub type Configuration {
@@ -18,14 +18,16 @@ pub fn get_port() -> Option(Int) {
   |> option.from_result
 }
 
-pub fn get_access_token() -> Option(String) {
+pub fn get_access_token() -> Option(AccessToken) {
   get_env("ACCESS_TOKEN")
   |> option.from_result
+  |> option.map(AccessToken)
 }
 
-pub fn get_ha_supervisor_token() -> Option(String) {
+pub fn get_ha_supervisor_token() -> Option(AccessToken) {
   get_env("SUPERVISOR_TOKEN")
   |> option.from_result
+  |> option.map(AccessToken)
 }
 
 pub external fn get_env(String) -> Result(String, Nil) =

@@ -1,30 +1,22 @@
-import gleam/erlang
-import gleam/dynamic.{Dynamic}
 import gleam/option.{Option}
 import gleam/result
 import gleam/io
-import gleam/string
 import gleam/list
-import gleam/httpc
-import gleam/http.{Http, Post}
-import gleam/otp/process.{Receiver, Sender}
+import gleam/otp/process.{Sender}
 import gleam/otp/process
-import nerf/websocket.{
-  ConnectError, Connection, ConnectionFailed, ConnectionRefused, Frame, Text,
-}
-import glome/core/authentication.{AccessToken}
-import glome/core/ha_client
-import glome/core/json
+import gleam/regex
+import gleam/json.{object, string}
+import nerf/websocket.{Connection, Text}
+import glome/core/authentication
 import glome/core/loops
-import glome/core/error.{
-  CallServiceError, DeserializationError, GlomeError, LoopNil, WebsocketConnectionError,
-}
+import glome/core/error.{GlomeError, LoopNil}
 import glome/homeassistant/state.{State}
 import glome/homeassistant/state_change_event.{StateChangeEvent}
 import glome/homeassistant/entity_id.{EntityId}
+import glome/homeassistant/entity_selector.{All, EntitySelector, ObjectId, Regex}
 import glome/homeassistant/domain.{Domain}
 import glome/homeassistant/environment.{Configuration}
-import glome/homeassistant/service
+import glome/homeassistant/service.{Service}
 
 pub opaque type HomeAssistant {
   HomeAssistant(handlers: StateChangeHandlers, config: Configuration)
@@ -39,7 +31,7 @@ pub type StateChangeFilter =
 
 pub type StateChangeHandlersEntry {
   StateChangeHandlersEntry(
-    entity_id: EntityId,
+    entity_selector: EntitySelector,
     handler: StateChangeHandler,
     filter: StateChangeFilter,
   )
@@ -52,7 +44,6 @@ pub fn connect(
   config: Configuration,
   conn_handler: fn(HomeAssistant) -> HomeAssistant,
 ) -> Result(Nil, GlomeError) {
-
   let ha_api_path = case config.host {
     "supervisor" -> "/core/websocket"
     _ -> "/api/websocket"
@@ -65,7 +56,6 @@ pub fn connect(
       |> error.map_connection_error
 
     assert Ok(_) = authentication.authenticate(connection, config.access_token)
-
     assert Ok(_) = start_state_loop(connection, sender)
   })
 
@@ -80,8 +70,17 @@ pub fn connect(
     list.filter(
       handlers,
       fn(entry: StateChangeHandlersEntry) {
-        entry.entity_id.domain == state_changed_event.entity_id.domain && {
-          entry.entity_id.object_id == state_changed_event.entity_id.object_id || entry.entity_id.object_id == "*"
+        entry.entity_selector.domain == state_changed_event.entity_id.domain && case entry.entity_selector.object_id {
+          ObjectId(object_id) ->
+            object_id == state_changed_event.entity_id.object_id
+          All -> True
+          Regex(pattern) ->
+            regex.from_string(pattern)
+            |> result.map(regex.check(
+              _,
+              state_changed_event.entity_id.object_id,
+            ))
+            |> result.unwrap(or: False)
         }
       },
     )
@@ -107,13 +106,13 @@ pub fn connect(
 
 pub fn add_handler(
   to home_assistant: HomeAssistant,
-  for entity_id: EntityId,
+  for entity_selector: EntitySelector,
   handler handler: StateChangeHandler,
 ) -> HomeAssistant {
   let handlers =
     do_add_handler_with_filter(
       home_assistant.handlers,
-      entity_id,
+      entity_selector,
       handler,
       fn(_, _) { True },
     )
@@ -122,14 +121,14 @@ pub fn add_handler(
 
 pub fn add_constrained_handler(
   to home_assistant: HomeAssistant,
-  for entity_id: EntityId,
+  for entity_selector: EntitySelector,
   handler handler: StateChangeHandler,
   constraint filter: StateChangeFilter,
 ) -> HomeAssistant {
   let handlers =
     do_add_handler_with_filter(
       home_assistant.handlers,
-      entity_id,
+      entity_selector,
       handler,
       filter,
     )
@@ -139,7 +138,7 @@ pub fn add_constrained_handler(
 pub fn call_service(
   home_assistant: HomeAssistant,
   domain: Domain,
-  service: String,
+  service: Service,
   service_data: Option(String),
 ) -> Result(String, GlomeError) {
   service.call(home_assistant.config, domain, service, service_data)
@@ -155,11 +154,14 @@ pub fn get_state(
 // PRIVATE API
 fn do_add_handler_with_filter(
   in handlers: StateChangeHandlers,
-  for entity_id: EntityId,
+  for entity_selector: EntitySelector,
   handler handler: StateChangeHandler,
   predicate filter: StateChangeFilter,
 ) -> StateChangeHandlers {
-  list.append(handlers, [StateChangeHandlersEntry(entity_id, handler, filter)])
+  list.append(
+    handlers,
+    [StateChangeHandlersEntry(entity_selector, handler, filter)],
+  )
 }
 
 fn start_state_loop(
@@ -167,16 +169,21 @@ fn start_state_loop(
   sender: Sender(StateChangeEvent),
 ) -> Result(Nil, GlomeError) {
   let subscribe_state_change_events =
-    json.encode([
-      json.json_element("id", "1"),
-      json.json_element("type", "subscribe_events"),
-      json.json_element("event_type", "state_changed"),
-    ])
+    json.to_string(object([
+      #("id", string("1")),
+      #("type", string("subscribe_events")),
+      #("event_type", string("state_changed")),
+    ]))
+
   websocket.send(connection, subscribe_state_change_events)
+  case websocket.receive(connection, 500) {
+    Ok(Text(message)) -> Ok(io.debug(message))
+    Error(_) -> Error(LoopNil)
+  }
   loops.start_state_change_event_publisher(fn() {
     case websocket.receive(connection, 500) {
       Ok(Text(message)) -> publish_state_change_event(sender, message)
-      Error(nil) -> Error(LoopNil)
+      Error(_) -> Error(LoopNil)
     }
   })
   Ok(Nil)
@@ -186,7 +193,7 @@ fn publish_state_change_event(
   sender: Sender(StateChangeEvent),
   message: String,
 ) -> Result(Nil, GlomeError) {
-  try state_change_event = state_change_event.from_json(message)
+  try state_change_event = state_change_event.decode(message)
   process.send(sender, state_change_event)
   Ok(Nil)
 }
