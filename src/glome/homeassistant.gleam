@@ -1,14 +1,15 @@
-import gleam/option.{Option}
+import gleam/option.{Option, Some}
 import gleam/result
 import gleam/io
 import gleam/list
 import gleam/otp/process.{Sender}
 import gleam/otp/process
 import gleam/regex
-import gleam/json.{object, string}
+import gleam/json.{array, object, string}
 import nerf/websocket.{Connection, Text}
 import glome/core/authentication
 import glome/core/loops
+import glome/core/util
 import glome/core/error.{GlomeError, LoopNil}
 import glome/homeassistant/state.{State}
 import glome/homeassistant/state_change_event.{StateChangeEvent}
@@ -16,7 +17,7 @@ import glome/homeassistant/entity_id.{EntityId}
 import glome/homeassistant/entity_selector.{All, EntitySelector, ObjectId, Regex}
 import glome/homeassistant/domain.{Domain}
 import glome/homeassistant/environment.{Configuration}
-import glome/homeassistant/service.{Service}
+import glome/homeassistant/service.{Area, Device, Entity, Service, Target}
 
 pub opaque type HomeAssistant {
   HomeAssistant(handlers: StateChangeHandlers, config: Configuration)
@@ -139,8 +140,50 @@ pub fn call_service(
   home_assistant: HomeAssistant,
   domain: Domain,
   service: Service,
-  service_data: Option(String),
+  targets: Option(List(Target)),
+  data: Option(String),
 ) -> Result(String, GlomeError) {
+  let extract_target_value = fn(target: Target) {
+    case target {
+      Entity(value) -> entity_id.to_string(value)
+      Area(value) -> value
+      Device(value) -> value
+    }
+  }
+  let convert_target = fn(item: #(String, List(Target))) {
+    #(item.0, array(list.map(item.1, extract_target_value), string))
+  }
+
+  let targets_json =
+    option.then(
+      targets,
+      fn(value: List(Target)) {
+        util.group(
+          value,
+          with: fn(item) {
+            case item {
+              Entity(_) -> "entity_id"
+              Area(_) -> "area_id"
+              Device(_) -> "device_id"
+            }
+          },
+        )
+        |> list.map(convert_target)
+        |> json.object
+        |> Some
+      },
+    )
+
+  let service_data =
+    option.then(
+      targets_json,
+      fn(value) {
+        value
+        |> json.to_string
+        |> Some
+      },
+    )
+
   service.call(home_assistant.config, domain, service, service_data)
 }
 

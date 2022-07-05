@@ -36,6 +36,8 @@ pub fn send_ha_rest_api_request(
     None -> req
   }
 
+  io.debug(req)
+
   try resp =
     httpc.send(req)
     |> result.map_error(fn(error) {

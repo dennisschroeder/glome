@@ -22,7 +22,7 @@ pub fn decode(json_string: String) -> Result(StateChangeEvent, GlomeError) {
 }
 
 fn decoder(data: Dynamic) -> Result(StateChangeEvent, GlomeError) {
-  let entity_id_decoder = field("entity_id", entity_id.entiy_id_decoder)
+  let entity_id_decoder = field("entity_id", entity_id.decoder)
   try entity_id =
     entity_id_decoder(data)
     |> error.map_decode_errors
