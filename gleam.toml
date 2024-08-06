@@ -15,7 +15,7 @@ nerf = "~> 0.1"
 gleam_otp = "~> 0.3"
 gleam_httpc = "~> 1.1"
 gleam_erlang = "~> 0.5"
-gleam_json = "~> 0.4"
+gleam_json = "~> 0.4 or ^0.7.0"
 
 [dev-dependencies]
 gleeunit = "~> 0.5"
